@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>コールセンター対応トレーニング</title>
+    <!-- Tailwind CSS をCDNから読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome (アイコン用) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* スクロールバーのカスタマイズ */
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+        
+        /* ローディングスピナー */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* タイピングインジケーター (処理中アニメーション) */
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: #9ca3af;
+            border-radius: 50%;
+            animation: typing 1.4s infinite both;
+            margin: 0 3px;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-[100dvh] flex flex-col font-sans overflow-hidden">
+
+    <!-- スタート画面 -->
+    <div id="start-screen" class="flex-1 flex flex-col items-center justify-center p-4 h-full">
+        <div class="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
+            <div class="bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-headset text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">コールセンター<br>対応トレーニング</h1>
+            <p class="text-gray-600 mb-6 text-sm">
+                AIを活用した音声対話シミュレーションです。<br>
+                開始前にマイクの使用許可が必要です。
+            </p>
+
+            <!-- ユーザーアカウント表示 -->
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6 flex items-center justify-center">
+                <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mr-3 shadow-inner">
+                    <i class="fas fa-user text-sm"></i>
+                </div>
+                <div class="text-left">
+                    <div class="text-[10px] text-gray-500 font-medium mb-0.5">ログイン中のアカウント</div>
+                    <div class="text-sm font-bold text-gray-700" id="account-name">ユーザー情報取得中...</div>
+                </div>
+            </div>
+            
+            <button id="start-btn" onclick="startSimulation()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center">
+                <span>電話対応を始める</span>
+                <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+
+            <!-- マイクエラー表示領域 -->
+            <div id="mic-error" class="hidden mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm text-left flex items-start">
+                <i class="fas fa-exclamation-circle mt-0.5 mr-2 flex-shrink-0"></i>
+                <span>マイクへのアクセスが拒否されたか、デバイスが見つかりません。ブラウザの設定でマイクを許可して再試行してください。</span>
+            </div>
+            <!-- チェック中ローディング -->
+            <div id="start-loading" class="hidden mt-4 flex items-center justify-center text-blue-600">
+                <div class="loader mr-2"></div>
+                <span class="text-sm font-medium">マイクを確認中...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- チャット画面全体 (初期非表示) -->
+    <div id="chat-screen" class="hidden flex-col flex-1 w-full relative overflow-hidden">
+        
+        <!-- 中央のチャットエリア本体 -->
+        <div class="flex-1 flex justify-center w-full bg-gray-100 overflow-hidden">
+            <div class="flex flex-col max-w-2xl w-full bg-white shadow-xl h-full relative overflow-hidden">
+                <!-- ヘッダー -->
+                <div class="bg-blue-600 text-white p-4 flex items-center justify-between shadow-md z-10 shrink-0">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 font-bold mr-3 shadow-inner">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div>
+                            <h2 class="font-bold">お客様 (シミュレーター)</h2>
+                            <p class="text-xs text-blue-200" id="header-status">ステータス: オンライン</p>
+                        </div>
+                    </div>
+                    <button onclick="resetSimulation()" class="text-blue-100 hover:text-white transition" title="最初からやり直す">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+
+                <!-- チャット履歴表示エリア -->
+                <div id="chat-container" class="chat-container flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 pb-4">
+                    <!-- JavaScriptでメッセージが挿入されます -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 画面下部の固定エリア -->
+        <div class="bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] shrink-0 w-full z-20">
+            <div class="max-w-2xl mx-auto w-full flex flex-col p-4 pt-2">
+                
+                <!-- 入力UIとステータス -->
+                <div id="system-status" class="text-xs text-gray-600 mb-2 h-4 font-medium flex items-center px-1">
+                    <!-- ステータステキスト -->
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- マイクボタン -->
+                    <button id="mic-btn" onclick="toggleRecording()" class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 flex items-center justify-center transition shadow-sm flex-shrink-0 relative">
+                        <i id="mic-icon" class="fas fa-microphone text-xl relative z-10"></i>
+                        <span id="mic-pulse" class="absolute inset-0 rounded-full bg-red-400 opacity-0"></span>
+                    </button>
+                    <!-- テキスト入力 -->
+                    <div class="flex-1 relative">
+                        <input type="text" id="text-input" placeholder="マイクで話すか、テキストを入力..." class="w-full pl-4 pr-12 py-3 bg-white border-2 border-blue-400 rounded-full focus:outline-none focus:ring-4 focus:ring-blue-100 transition shadow-sm">
+                        <!-- 送信ボタン -->
+                        <button id="send-btn" onclick="sendTextMessage()" class="absolute right-2 top-1/2 transform -translate-y-1/2 w-9 h-9 rounded-full bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center transition shadow-sm">
+                            <i class="fas fa-paper-plane text-sm -ml-0.5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 【設定】GASのWebアプリURLをここに貼り付けてください
+        // 例: "https://script.google.com/macros/s/AKfycb.../exec"
+        // =========================================================================
+        const GAS_API_URL = ""; 
+
+        // --- 状態管理変数 ---
+        let currentStepNo = 1;      // 現在のシナリオステップ番号
+        let recognition = null;     // Web Speech API インスタンス
+        let isRecording = false;    // 録音中フラグ
+        let isProcessing = false;   // API通信等の処理中フラグ
+        let isFirstInteraction = true; // 初回のやり取り（挨拶の入力）かどうかのフラグ
+        let audioContext = null;    // 再生用 AudioContext
+        let typingIndicatorElement = null; // 処理中アニメーション要素
+        let silenceTimer = null;    // 無音検知用タイマー
+        
+        let userEmail = "ゲストユーザー"; // 取得したメールアドレスを保持
+        let simulationLogs = [];    // 出力用のログ配列
+
+        // --- API通信用関数 (GASへのフェッチ) ---
+        async function callGasApi(action, params) {
+            // URLが設定されていない場合はモックとして動作
+            if (!GAS_API_URL) {
+                console.warn("GAS_API_URL が設定されていないため、モック動作を実行します。");
+                return mockApiCall(action, params);
+            }
+
+            // GASのCORS制約を回避するため、"Content-Type: text/plain" で送信する
+            const response = await fetch(GAS_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain',
+                },
+                body: JSON.stringify({ action: action, ...params }),
+                redirect: 'follow'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const json = await response.json();
+            if (json.status === "error") {
+                throw new Error(json.message);
+            }
+            return json.data;
+        }
+
+        // --- 開発・プレビュー用モック処理 ---
+        async function mockApiCall(action, params) {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    if (action === "processStep") {
+                        const { no, text } = params;
+                        if (text === "") {
+                            resolve({
+                                status: "CONTINUE", nextNo: no,
+                                customerText: "プリンタからレシートが出なくなったんですが、どうしたら直るでしょうか？", 
+                                options: ["電源を確認する", "再起動する"], scenarioPrompt: "焦った様子で", message: "", score: 0
+                            });
+                        } else {
+                            const isEnd = text === "終了";
+                            const isHelp = text === "ヘルプ" || text === "help";
+                            if (isHelp) {
+                                resolve({
+                                    status: "HELP", options: ["紙詰まりのようなので用紙をセットしなおしてください", "電源を入れなおしてほしい"],
+                                    message: "現在のステップで認識可能な返答は以下の通りです。"
+                                });
+                            } else {
+                                resolve({
+                                    status: isEnd ? "END" : "CONTINUE", nextNo: no + 1,
+                                    customerText: isEnd ? "ありがとうございました。" : "なるほど、「" + text + "」ですね。次はどうしますか？",
+                                    options: ["電源を確認する", "再起動する"], scenarioPrompt: "丁寧な日本語で",
+                                    message: isEnd ? "レシートが出てきました、ありがとうございました。" : "", score: isEnd ? 100 : 0
+                                });
+                            }
+                        }
+                    } else if (action === "generateVoice") {
+                        // モック環境ではTTSに失敗したとみなしてフォールバックさせる
+                        reject(new Error("Mock TTS Not Available"));
+                    } else if (action === "saveSimulationLog") {
+                        console.log("Mock Log Saved:", params);
+                        resolve({ success: true });
+                    }
+                }, 1000);
+            });
+        }
+
+
+        // --- 初期化処理 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const accountNameEl = document.getElementById('account-name');
+            const userApiUrl = "https://script.google.com/a/macros/unext-hd.jp/s/AKfycbz8KoBntVtOsCvb1VyYLVbPfSJTvCw4dk2R6cYaGWAXOxVlf6i-WHlv0JzO3sd_SjKG/exec";
+
+            window.handleEmailResponse = function(data) {
+                let email = data.email || "";
+                if (email && email !== "") {
+                    userEmail = email; 
+                    accountNameEl.textContent = email;
+                } else {
+                    userEmail = "ゲストユーザー";
+                    accountNameEl.textContent = "ゲストユーザー";
+                }
+                const scriptEl = document.getElementById('jsonp-script');
+                if (scriptEl) scriptEl.remove();
+            };
+
+            const script = document.createElement('script');
+            script.id = 'jsonp-script';
+            script.src = userApiUrl + "?callback=handleEmailResponse";
+            
+            script.onerror = function() {
+                console.error("メールアドレスAPIの読み込みに失敗しました");
+                if (window.location.hostname === "localhost" || window.location.hostname === "") {
+                    userEmail = "test.user@example.com";
+                    accountNameEl.textContent = "test.user@example.com (プレビュー)";
+                } else {
+                    userEmail = "取得エラー";
+                    accountNameEl.textContent = "取得エラー";
+                }
+            };
+            document.body.appendChild(script);
+        });
+
+        // --- UI要素の取得 ---
+        const startScreen = document.getElementById('start-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const micError = document.getElementById('mic-error');
+        const startLoading = document.getElementById('start-loading');
+        const startBtn = document.getElementById('start-btn');
+        const chatContainer = document.getElementById('chat-container');
+        const systemStatus = document.getElementById('system-status');
+        const micBtn = document.getElementById('mic-btn');
+        const micPulse = document.getElementById('mic-pulse');
+        const textInput = document.getElementById('text-input');
+
+        textInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendTextMessage();
+        });
+
+        // --- 1. スタート画面: マイクチェックと画面遷移 ---
+        async function startSimulation() {
+            micError.classList.add('hidden');
+            startBtn.classList.add('hidden');
+            startLoading.classList.remove('hidden');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                startScreen.classList.add('hidden');
+                startScreen.classList.remove('flex');
+                chatScreen.classList.remove('hidden');
+                chatScreen.classList.add('flex');
+                
+                initSpeechRecognition();
+                appendMessage('system', 'マイクの接続を確認しました。シミュレーションを開始します。');
+                
+                setTimeout(() => { startRecognitionAuto(); }, 500);
+            } catch (err) {
+                console.error('Microphone access error:', err);
+                micError.classList.remove('hidden');
+                startBtn.classList.remove('hidden');
+                startLoading.classList.add('hidden');
+            }
+        }
+
+        // --- 2. 音声認識 (Web Speech API) ---
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                updateSystemStatus("お使いのブラウザは音声認識に非対応です。テキストで入力してください。");
+                micBtn.disabled = true;
+                micBtn.classList.replace('bg-blue-100', 'bg-gray-200');
+                micBtn.classList.replace('text-blue-600', 'text-gray-400');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = true; 
+            recognition.continuous = true; 
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                updateMicUI();
+                updateSystemStatus("🎤 マイクで聞き取っています...");
+                textInput.value = ''; 
+            };
+
+            recognition.onresult = (event) => {
+                let fullTranscript = '';
+                for (let i = 0; i < event.results.length; ++i) {
+                    fullTranscript += event.results[i][0].transcript;
+                }
+                textInput.value = fullTranscript; 
+                startSilenceTimer(); 
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                clearSilenceTimer();
+                isRecording = false;
+                updateMicUI();
+                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    updateSystemStatus("音声認識エラーが発生しました。テキストを入力してください。");
+                } else {
+                    updateSystemStatus("");
+                }
+            };
+
+            recognition.onend = () => {
+                clearSilenceTimer();
+                isRecording = false;
+                updateMicUI();
+                if (systemStatus.innerText.includes("聞き取っています")) {
+                    updateSystemStatus("");
+                }
+
+                const textToSend = textInput.value.trim();
+                if (textToSend && !isProcessing) {
+                    textInput.value = '';
+                    appendMessage('user', textToSend);
+                    
+                    if (isFirstInteraction) {
+                        isFirstInteraction = false;
+                        callProcessStep(currentStepNo, "");
+                    } else {
+                        callProcessStep(currentStepNo, textToSend);
+                    }
+                }
+            };
+        }
+
+        function startSilenceTimer() {
+            clearSilenceTimer();
+            silenceTimer = setTimeout(() => {
+                if (isRecording && recognition) recognition.stop();
+            }, 1500);
+        }
+
+        function clearSilenceTimer() {
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+                silenceTimer = null;
+            }
+        }
+
+        // --- 3. マイク録音のトグル ---
+        function toggleRecording() {
+            if (!recognition || isProcessing || micBtn.disabled) return;
+            if (isRecording) {
+                clearSilenceTimer();
+                recognition.stop();
+            } else {
+                try { recognition.start(); } catch (e) { console.error("Recognition start error:", e); }
+            }
+        }
+
+        function updateMicUI() {
+            if (isRecording) {
+                micBtn.classList.replace('bg-blue-100', 'bg-red-500');
+                micBtn.classList.replace('text-blue-600', 'text-white');
+                micPulse.classList.add('animate-ping', 'opacity-75');
+            } else {
+                micBtn.classList.replace('bg-red-500', 'bg-blue-100');
+                micBtn.classList.replace('text-white', 'text-blue-600');
+                micPulse.classList.remove('animate-ping', 'opacity-75');
+            }
+        }
+
+        // --- 4. テキストメッセージの送信 ---
+        function sendTextMessage() {
+            if (isProcessing) return;
+            const text = textInput.value.trim();
+            if (!text) return;
+            
+            textInput.value = '';
+            appendMessage('user', text);
+            
+            if (isRecording && recognition) {
+                clearSilenceTimer();
+                recognition.stop(); 
+            }
+            
+            if (isFirstInteraction) {
+                isFirstInteraction = false;
+                callProcessStep(currentStepNo, "");
+            } else {
+                callProcessStep(currentStepNo, text);
+            }
+        }
+
+        // --- 5. バックエンド(GAS) APIの呼び出し ---
+        async function callProcessStep(no, text) {
+            isProcessing = true;
+            setUIState(true);
+            updateSystemStatus("<i class='fas fa-circle-notch fa-spin mr-1'></i> システム応答を確認中...");
+
+            try {
+                // fetch API を使用してGASへリクエスト送信
+                const result = await callGasApi("processStep", { no: no, text: text });
+                onProcessStepSuccess(result);
+            } catch (error) {
+                onApiError(error);
+            }
+        }
+
+        function onProcessStepSuccess(result) {
+            if (result.status === "END") {
+                showTypingIndicator();
+                callGenerateVoice(result.message, result.scenarioPrompt, true, result.score);
+                return;
+            }
+
+            if (result.status === "HELP") {
+                appendMessage('system', result.message);
+                const optionsList = result.options.map(opt => `・${opt}`).join('<br>');
+                appendMessage('system', `<div class="text-left">💡 選択肢候補:<br>${optionsList}</div>`);
+
+                isProcessing = false;
+                setUIState(false);
+                updateSystemStatus("");
+                return;
+            }
+
+            currentStepNo = result.nextNo;
+            const customerText = result.customerText;
+            const scenarioPrompt = result.scenarioPrompt;
+
+            showTypingIndicator();
+            callGenerateVoice(customerText, scenarioPrompt, false, 0);
+        }
+
+        async function callGenerateVoice(text, prompt, isEnd = false, score = 0) {
+            updateSystemStatus("<i class='fas fa-circle-notch fa-spin mr-1'></i> 音声を生成中...");
+            
+            try {
+                // fetch API を使用してGASへリクエスト送信
+                const audioData = await callGasApi("generateVoice", { text: text, prompt: prompt });
+                playVoice(audioData, text, isEnd, score);
+            } catch (err) {
+                console.error("Voice generation failed:", err);
+                fallbackToSystemVoice(text, isEnd, score);
+            }
+        }
+
+        // --- 8. 音声の再生 ---
+        async function playVoice(audioData, text, isEnd, score) {
+            updateSystemStatus("<i class='fas fa-volume-up mr-1 text-blue-500'></i> 再生中...");
+            try {
+                const base64 = audioData.base64;
+                const sampleRate = audioData.sampleRate;
+
+                const binaryString = window.atob(base64);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const int16Array = new Int16Array(bytes.buffer);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32Array[i] = int16Array[i] / 32768.0;
+                }
+
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') await audioContext.resume();
+
+                const audioBuffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
+                audioBuffer.getChannelData(0).set(float32Array);
+
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                
+                source.onended = () => {
+                    removeTypingIndicator();
+                    appendMessage('ai', text);
+                    
+                    if (isEnd) {
+                        handleSimulationEnd(score);
+                    } else {
+                        updateSystemStatus("");
+                        isProcessing = false;
+                        setUIState(false);
+                        startRecognitionAuto();
+                    }
+                };
+
+                source.start();
+
+            } catch (e) {
+                console.error("Audio playback error:", e);
+                fallbackToSystemVoice(text, isEnd, score);
+            }
+        }
+
+        // --- ユーティリティ ---
+        function fallbackToSystemVoice(text, isEnd, score) {
+            removeTypingIndicator();
+            appendMessage('ai', text);
+            appendMessage('system', '音声の生成に失敗しました（システム音声で再生します）');
+            
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ja-JP';
+                utterance.onend = () => {
+                    if (isEnd) {
+                        handleSimulationEnd(score);
+                    } else {
+                        isProcessing = false;
+                        setUIState(false);
+                        updateSystemStatus("");
+                        startRecognitionAuto();
+                    }
+                };
+                
+                updateSystemStatus("<i class='fas fa-volume-up mr-1 text-blue-500'></i> システム音声で再生中...");
+                window.speechSynthesis.speak(utterance);
+            } else {
+                if (isEnd) {
+                    handleSimulationEnd(score);
+                } else {
+                    isProcessing = false;
+                    setUIState(false);
+                    updateSystemStatus("");
+                    startRecognitionAuto();
+                }
+            }
+        }
+
+        function handleSimulationEnd(score) {
+            appendMessage('score', `シミュレーション終了 - スコア: <span class="text-blue-600 text-xl font-extrabold ml-1">${score}</span>`);
+            isProcessing = false;
+            setUIState(true, true); 
+            updateSystemStatus("完了しました");
+
+            // --- ログをGAS API経由でスプレッドシートに送信 ---
+            if (simulationLogs.length > 0) {
+                callGasApi("saveSimulationLog", {
+                    email: userEmail,
+                    logsJson: JSON.stringify(simulationLogs)
+                }).catch(err => console.error("ログ保存エラー:", err));
+            }
+        }
+
+        function showTypingIndicator() {
+            if (typingIndicatorElement) return;
+            const wrapper = document.createElement('div');
+            wrapper.className = "flex w-full justify-start";
+            const bubble = document.createElement('div');
+            bubble.className = "bg-white text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3.5 shadow-sm border border-gray-100 flex items-center h-[44px]";
+            const indicator = document.createElement('div');
+            indicator.className = "typing-indicator flex items-center";
+            indicator.innerHTML = '<span></span><span></span><span></span>';
+            bubble.appendChild(indicator);
+            wrapper.appendChild(bubble);
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+            typingIndicatorElement = wrapper;
+        }
+
+        function removeTypingIndicator() {
+            if (typingIndicatorElement && typingIndicatorElement.parentNode) {
+                typingIndicatorElement.parentNode.removeChild(typingIndicatorElement);
+                typingIndicatorElement = null;
+            }
+        }
+
+        function startRecognitionAuto() {
+            if (recognition && !isRecording) {
+                try { recognition.start(); } catch(e) {}
+            }
+        }
+
+        function onApiError(error) {
+            console.error("API Error:", error);
+            removeTypingIndicator();
+            appendMessage('system', `通信エラー: ${error.message || error}`);
+            
+            const retryMessage = "もう一度言ってもらえますか？";
+            showTypingIndicator();
+            callGenerateVoice(retryMessage, "丁寧な日本語で", false, 0);
+        }
+
+        function updateSystemStatus(htmlText) {
+            systemStatus.innerHTML = htmlText;
+        }
+
+        function setUIState(disabled, isEnd = false) {
+            textInput.disabled = disabled;
+            document.getElementById('send-btn').disabled = disabled;
+            micBtn.disabled = disabled;
+
+            if (disabled) {
+                textInput.classList.add('bg-gray-200', 'cursor-not-allowed');
+                micBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                document.getElementById('send-btn').classList.add('opacity-50', 'cursor-not-allowed');
+                
+                if (isEnd) textInput.placeholder = "シミュレーションは終了しました";
+            } else {
+                textInput.classList.remove('bg-gray-200', 'cursor-not-allowed');
+                micBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                document.getElementById('send-btn').classList.remove('opacity-50', 'cursor-not-allowed');
+                textInput.placeholder = "マイクで話すか、テキストを入力...";
+                textInput.focus();
+            }
+        }
+
+        function appendMessage(sender, text) {
+            let plainText = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>?/gm, '');
+            simulationLogs.push({ sender: sender, text: plainText.trim() });
+
+            const wrapper = document.createElement('div');
+            const bubble = document.createElement('div');
+            
+            if (sender === 'user') {
+                wrapper.className = "flex w-full justify-end";
+                bubble.className = "bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[85%] shadow-sm text-sm leading-relaxed";
+                bubble.innerHTML = text.replace(/\n/g, '<br>');
+            } else if (sender === 'ai') {
+                wrapper.className = "flex w-full justify-start";
+                bubble.className = "bg-white text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[85%] shadow-sm border border-gray-100 text-sm leading-relaxed";
+                bubble.innerHTML = text.replace(/\n/g, '<br>');
+            } else if (sender === 'score') {
+                wrapper.className = "flex w-full justify-center my-6";
+                bubble.className = "bg-gray-200 text-gray-800 rounded-full px-6 py-3 text-base font-bold shadow-md max-w-[90%] text-center";
+                bubble.innerHTML = text;
+            } else { 
+                wrapper.className = "flex w-full justify-center my-3";
+                bubble.className = "bg-gray-200 text-gray-600 rounded-xl px-4 py-2 text-xs font-medium max-w-[90%]";
+                bubble.innerHTML = text.includes('<div') ? text : text.replace(/\n/g, '<br>'); 
+            }
+
+            wrapper.appendChild(bubble);
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+        }
+
+        function resetSimulation() {
+            if (confirm("シミュレーションを最初からやり直しますか？")) {
+                currentStepNo = 1;
+                chatContainer.innerHTML = '';
+                typingIndicatorElement = null;
+                isFirstInteraction = true; 
+                simulationLogs = []; 
+                
+                clearSilenceTimer();
+                if (isRecording && recognition) recognition.stop();
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                
+                isProcessing = false;
+                updateSystemStatus("");
+                setUIState(false);
+                
+                startScreen.classList.remove('hidden');
+                startScreen.classList.add('flex');
+                chatScreen.classList.add('hidden');
+                chatScreen.classList.remove('flex');
+                
+                micError.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+                startLoading.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
